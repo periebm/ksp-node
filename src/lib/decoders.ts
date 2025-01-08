@@ -1,14 +1,13 @@
-export function decodeVarint(buffer: Buffer): [number, number] {
+export function decodeVarint(data: Buffer): [number, number] {
   let value = 0;
   let shift = 0;
-  let offset = 0;
-
-  while (offset < buffer.length) {
-    const byte = buffer[offset++];
+  for (let i = 0; i < data.length; i++) {
+    const byte = data[i];
     value |= (byte & 0x7f) << shift;
-    if ((byte & 0x80) === 0) break;
+    if ((byte & 0x80) === 0) {
+      return [value, i + 1];
+    }
     shift += 7;
   }
-
-  return [value, offset];
+  throw new Error('Invalid varint encoding');
 }

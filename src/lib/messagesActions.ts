@@ -1,19 +1,41 @@
-import { decodeVarint } from "./decoders";
-import { encodeVarint } from "./encoders";
 import net from 'net';
+import { encodeVarint } from './encoders';
+import { decodeVarint } from './decoders';
+import { ResponseRPC } from './@types/types';
 
-export function sendMessage(client: net.Socket, message: protobuf.Message): void {
-  const encodedMessage = (message.constructor as any).encode(message).finish();
-  const size = encodeVarint(encodedMessage.length);
-  client.write(Buffer.concat([size, encodedMessage]));
+export function sendMessage<T extends protobuf.Message<T>>(
+  conn: net.Socket,
+  message: any,
+  krpcClass: any
+): void {
+  const data = krpcClass.encode(message).finish(); // Codifica a mensagem
+  const size = encodeVarint(data.length); // Calcula o tamanho usando Varint
+  conn.write(Buffer.concat([size, data])); // Envia a mensagem
 }
 
-export function receiveMessage<T extends protobuf.Type>(
-  buffer: Buffer,
-  type: T
-): [protobuf.Message, Buffer] {
-  const [size, offset] = decodeVarint(buffer);
-  const messageData = buffer.slice(offset, offset + size);
-  const message = type.decode(messageData);
-  return [message, buffer.slice(offset + size)];
+export async function recvMessage(
+  conn: net.Socket,
+  krpcClass: any
+): Promise<ResponseRPC> {
+  return new Promise((resolve, reject) => {
+    let dataBuffer = Buffer.alloc(0);
+
+    conn.on('data', (chunk) => {
+      dataBuffer = Buffer.concat([dataBuffer, chunk]);
+
+      try {
+        const [size, offset] = decodeVarint(dataBuffer);
+        if (dataBuffer.length >= size + offset) {
+          const messageData = dataBuffer.slice(offset, offset + size);
+          const message = krpcClass.decode(messageData);
+          resolve(message);
+          dataBuffer = dataBuffer.slice(offset + size);
+        }
+      } catch (err: any) {
+        if (err.message !== 'Invalid varint encoding') {
+          reject(err);
+        }
+      }
+    });
+  });
 }
